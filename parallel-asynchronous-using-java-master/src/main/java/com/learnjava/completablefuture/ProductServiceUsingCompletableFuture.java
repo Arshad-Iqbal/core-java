@@ -74,10 +74,21 @@ public class ProductServiceUsingCompletableFuture {
                     productInfo.setProductOptions(updateInventory_approach2(productInfo));
                     return productInfo;
                 });
-        CompletableFuture<Review> reviewCompletableFuture = CompletableFuture.supplyAsync(() -> reviewService.retrieveReviews(productId));
+        CompletableFuture<Review> reviewCompletableFuture = CompletableFuture
+                .supplyAsync(() -> reviewService.retrieveReviews(productId))
+                .exceptionally((e) -> {
+                    log("handled the Exception in review service : " +e.getMessage());
+                    return Review.builder()
+                            .noOfReviews(0)
+                            .overallRating(0.0).build();
+                });
         Product product = productInfoCompletableFuture
                 .thenCombine(reviewCompletableFuture, ((productInfo, review) -> new Product(productId, productInfo, review)))
-                .join();
+                .whenComplete((result, ex) -> {
+                    if(ex != null)
+                        log("Inside whenComplete , product : " + result + " exception : " + ex.getMessage());
+                })
+                .join(); // block the thread
         timeTaken();
         return product;
     }
@@ -99,6 +110,11 @@ public class ProductServiceUsingCompletableFuture {
                 .stream()
                 .map(productOption -> {
                     return CompletableFuture.supplyAsync(() -> inventoryService.retrieveInventory(productOption))
+                            .exceptionally((e) -> {
+                                log("handling exception for inventory service : "+ e.getMessage());
+                                return Inventory.builder()
+                                        .count(1).build();
+                            })
                             .thenApply(inventory -> {
                                 productOption.setInventory(inventory);
                                 return productOption;
